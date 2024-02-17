@@ -190,7 +190,6 @@ def interpolate(n_clicks, model_id, node1, node2, steps, audio_children):
 
     return audio_elements
 
-# Unconditional generation code
 @app.callback(
     Output('audio-container', 'children'),
     Input('generate-button', 'n_clicks'),
@@ -198,54 +197,43 @@ def interpolate(n_clicks, model_id, node1, node2, steps, audio_children):
     State('steps-slider', 'value'),
     State('length-slider', 'value'),
     State('batch-size-slider', 'value'),
-    State('audio-container', 'children')
+    prevent_initial_call=True  # This prevents the callback from running at app startup
 )
-def generate(n_clicks, model_id, steps, length_in_s, batch_size, audio_children):
-    if n_clicks == 0:
+def generate(n_clicks, model_id, steps, length_in_s, batch_size):
+    if n_clicks is None or n_clicks == 0:
         return dash.no_update
 
     pickle_file = f"pipes/{model_id.replace('/', '-')}.pkl"
-    pipe = None 
+    pipe = None
 
     if os.path.exists(pickle_file):
-        print(f"Loading {model_id} from pickle file")
         with open(pickle_file, 'rb') as f:
             pipe = pickle.load(f)
-        print(f"Loaded {model_id} from pickle file")
     else:
-        print(f"Downloading {model_id} from HuggingFace")
         pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
-        print(f"Saving {model_id} to pickle file")
         with open(pickle_file, 'wb') as f:
             pickle.dump(pipe, f)
 
-    
-    pipe = pipe.to("cuda")
+    pipe = pipe.to(device)
 
-    print(f"Generating {model_id} audio")
     try:
         audios = pipe(audio_length_in_s=length_in_s, num_inference_steps=steps, batch_size=batch_size).audios
-    except:
+    except AttributeError:
         audios = pipe(num_inference_steps=steps, batch_size=batch_size).audios
-    print(f"Generated {model_id} audio")
 
     files = os.listdir('output')
-
     matching_files = [f for f in files if f.startswith(f"{model_id.replace('/', '-')}-{length_in_s}s-{steps}")]
     max_index = len(matching_files)
 
-    paths = []
-    
+    audio_elements = []
     for i, audio in enumerate(audios):
-        index = max_index + int(i)
+        index = max_index + i
         filename = f"{model_id.replace('/', '-')}-{length_in_s}s-{steps}-{index}.wav"
         write(f"output/{filename}", pipe.unet.sample_rate, audio.transpose())
-        paths.append(f"/audio/{filename}")
+        audio_elements.append(html.Audio(id=f'audio-player-{i}', controls=True, autoPlay=False, src=f"/audio/{filename}"))
 
-    new_audio_children = [html.Audio(id=f'audio-player-{i}', controls=True, autoPlay=True, src=path) for i, path in enumerate(paths)]
-
-    return new_audio_children
-
+    return audio_elements
+    
 # Model definitions
 models = [
     "harmonai/glitch-440k",
@@ -292,7 +280,13 @@ app.layout = html.Div([
     html.Div([
         html.Div([
             html.Audio(id='audio-player', controls=True, autoPlay=True, title='Clicked node audio'),            
-            html.Div(id='audio-container', children=[html.Audio(controls=True)], style={'display': 'flex', 'flex-direction': 'column'}, title="Generated audio")
+            html.Div([
+                dcc.Loading(
+                    id="loading-audio",
+                    type="default",  # You can choose from 'graph', 'cube', 'circle', 'dot', or 'default'
+                    children=html.Div(id='audio-container', children=[html.Audio(controls=True)], style={'display': 'flex', 'flex-direction': 'column'}, title="Generated audio")
+                )
+            ], style={'display': 'inline-block'}),
 
         ], style={'display': 'inline-block'}),
         html.Div([
