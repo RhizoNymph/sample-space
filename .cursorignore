@@ -1,0 +1,4 @@
+*venv*
+*.wav
+*.pkl
+*pycache*
