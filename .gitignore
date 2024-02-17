@@ -2,3 +2,4 @@
 *.wav
 *.pkl
 *pycache*
+feature_vectors.csv
