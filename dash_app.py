@@ -107,11 +107,13 @@ def tsne_plot(model_id):
     Output('tsne-output', 'figure'),
     Input('generate-tsne-button', 'n_clicks'),
     State('model-dropdown', 'value'),
+    prevent_initial_call=True  # This prevents the callback from running at app startup
 )
 def generate_tsne(n_clicks, model_id):
     if n_clicks == 0:
         return dash.no_update
 
+    # Your t-SNE plot generation logic here
     plot = tsne_plot(model_id)
     return plot
 
@@ -233,7 +235,7 @@ def generate(n_clicks, model_id, steps, length_in_s, batch_size):
         audio_elements.append(html.Audio(id=f'audio-player-{i}', controls=True, autoPlay=False, src=f"/audio/{filename}"))
 
     return audio_elements
-    
+
 # Model definitions
 models = [
     "harmonai/glitch-440k",
@@ -304,7 +306,13 @@ app.layout = html.Div([
             html.Audio(id='node2-audio', controls=True),
 
             ], style={'display': 'flex'}),
-            dcc.Graph(id='tsne-output', config={'displayModeBar': False, 'autosizable': True, 'fillFrame': True}, style={'width': '100%', 'height': '100%'}, figure=placeholder_plot)
+            html.Div([
+                dcc.Loading(
+                    id="loading-tsne",
+                    type="default",  # You can choose from 'graph', 'cube', 'circle', 'dot', or 'default'
+                    children=dcc.Graph(id='tsne-output', config={'displayModeBar': False, 'autosizable': True, 'fillFrame': True}, style={'width': '100%', 'height': '100%'}, figure=placeholder_plot)
+                )
+            ], style={'width': '100%', 'height': '100%'}),
         ], style={'width': '100%', 'height': '100%'}),  
                 
     ], style={'width': '100%', 'height': '100%', 'display': 'flex'}),
