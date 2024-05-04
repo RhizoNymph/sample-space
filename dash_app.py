@@ -24,6 +24,7 @@ import numpy as np
 
 # Init code
 device = "cuda" if torch.cuda.is_available() else "cpu"
+AUDIO_DIR = os.getenv('AUDIO_DIR', './audio')
 
 generator = torch.Generator(device=device)
 
@@ -42,17 +43,13 @@ app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.DARKLY
 def play_sound(clickData):
     if clickData is None:
         return ''
-    # Assuming the full path is provided and 'audio/' is part of the path
     full_path = clickData['points'][0]['text']
-    # Extract the relative path from the full path
-    audio_base_path = 'audio/'  # Adjust this path to where your 'audio/' directory is located
-    relative_path = os.path.relpath(full_path, audio_base_path)
-    
+    relative_path = os.path.relpath(full_path, AUDIO_DIR)
     return f'/audio/{relative_path}'
 
 @server.route('/audio/<path:path>')
 def serve_audio(path):
-    return send_from_directory('audio', path)
+    return send_from_directory(AUDIO_DIR, path)
 
 def is_audio_file(filename):
     if filename.endswith('.wav'):
@@ -112,8 +109,8 @@ def get_features(y, sr):
 
 from MulticoreTSNE import MulticoreTSNE as TSNE
 
-def tsne_plot(perplexity=30, learning_rate=200, n_iter=1000, n_clusters=5):
-    files = glob.glob('audio/**/*', recursive=True)
+def tsne_plot(perplexity=30, learning_rate=200, n_iter=1000, n_clusters=5, audio_dir='./audio'):
+    files = glob.glob(os.path.join(audio_dir, '**/*'), recursive=True)
     files = [entry for entry in files if os.path.isfile(entry) and is_audio_file(entry)]
 
     feature_vectors = []
@@ -168,14 +165,15 @@ def tsne_plot(perplexity=30, learning_rate=200, n_iter=1000, n_clusters=5):
     [State('perplexity-slider', 'value'),
      State('learning-rate-slider', 'value'),
      State('iterations-slider', 'value'),
-     State('clusters-slider', 'value')],  # Add this line
+     State('clusters-slider', 'value'),
+     State('audio-dir-input', 'value')],  # Add this line
     prevent_initial_call=True
 )
-def generate_tsne(n_clicks, perplexity, learning_rate, n_iter, n_clusters):  # Add n_clusters parameter
+def generate_tsne(n_clicks, perplexity, learning_rate, n_iter, n_clusters, audio_dir):  # Add audio_dir parameter
     if n_clicks == 0:
         return dash.no_update
 
-    plot = tsne_plot(perplexity, learning_rate, n_iter, n_clusters)  # Pass n_clusters to tsne_plot
+    plot = tsne_plot(perplexity, learning_rate, n_iter, n_clusters, audio_dir)  # Pass audio_dir to tsne_plot
     return plot
 
 clusters_slider = dcc.Slider(
@@ -241,6 +239,8 @@ app.layout = html.Div([
         html.Div([
             html.Div([
             html.Div([
+                html.Label('Audio Directory:'),
+                dcc.Input(id='audio-dir-input', type='text', value='./audio', style={'margin': '10px'}),
                 html.Button('Generate t-SNE Plot', id='generate-tsne-button', n_clicks=0),            
             ]),
             ], style={'display': 'flex'}),
