@@ -62,7 +62,7 @@ def get_features(y, sr):
                       ) / np.std(feature_vector)
     return feature_vector, y.mean()
 
-def tsne_plot(model_id):
+def tsne_plot(model_id, perplexity=30, learning_rate=200):
     files = os.listdir('output')
     matching_files = [f for f in files if f.startswith(f"{model_id.replace('/', '-')}")]
 
@@ -107,14 +107,16 @@ def tsne_plot(model_id):
     Output('tsne-output', 'figure'),
     Input('generate-tsne-button', 'n_clicks'),
     State('model-dropdown', 'value'),
+    State('perplexity-slider', 'value'),
+    State('learning-rate-slider', 'value'),
     prevent_initial_call=True  # This prevents the callback from running at app startup
 )
-def generate_tsne(n_clicks, model_id):
+def generate_tsne(n_clicks, model_id, perplexity, learning_rate):
     if n_clicks == 0:
         return dash.no_update
 
     # Your t-SNE plot generation logic here
-    plot = tsne_plot(model_id)
+    plot = tsne_plot(model_id, perplexity, learning_rate)
     return plot
 
 # Interpolation code
@@ -246,6 +248,26 @@ models = [
     "harmonai/honk-140k"
 ]
 
+perplexity_slider = dcc.Slider(
+    id='perplexity-slider',
+    min=5,
+    max=50,
+    step=5,
+    value=30,  # Default value
+    marks={i: str(i) for i in range(5, 51, 5)},
+    tooltip={"placement": "bottom", "always_visible": True}
+)
+
+learning_rate_slider = dcc.Slider(
+    id='learning-rate-slider',
+    min=10,
+    max=1000,
+    step=10,
+    value=200,  # Default value
+    marks={i: str(i) for i in range(10, 1001, 100)},
+    tooltip={"placement": "bottom", "always_visible": True}
+)
+
 # App code
 app.layout = html.Div([
     html.Div([
@@ -279,13 +301,23 @@ app.layout = html.Div([
             value=2,
         ),
     ], style={'width': '50%', 'display': 'inline-block'}),
+
+    # New Div for Perplexity and Learning Rate Sliders
+    html.Div([
+        html.Label('Perplexity:'),
+        perplexity_slider,
+        html.Label('Learning Rate:'),
+        learning_rate_slider
+    ], style={'position': 'absolute', 'left': '10px', 'bottom': '10px', 'width': '300px'}),
+
+    # Existing layout components continue here...
     html.Div([
         html.Div([
             html.Audio(id='audio-player', controls=True, autoPlay=True, title='Clicked node audio'),            
             html.Div([
                 dcc.Loading(
                     id="loading-audio",
-                    type="default",  # You can choose from 'graph', 'cube', 'circle', 'dot', or 'default'
+                    type="default",
                     children=html.Div(id='audio-container', children=[html.Audio(controls=True)], style={'display': 'flex', 'flex-direction': 'column'}, title="Generated audio")
                 )
             ], style={'display': 'inline-block'}),
@@ -309,7 +341,7 @@ app.layout = html.Div([
             html.Div([
                 dcc.Loading(
                     id="loading-tsne",
-                    type="default",  # You can choose from 'graph', 'cube', 'circle', 'dot', or 'default'
+                    type="default",
                     children=dcc.Graph(id='tsne-output', config={'displayModeBar': False, 'autosizable': True, 'fillFrame': True}, style={'width': '100%', 'height': '100%'}, figure=placeholder_plot)
                 )
             ], style={'width': '100%', 'height': '100%'}),
