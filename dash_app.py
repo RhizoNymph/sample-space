@@ -3,7 +3,7 @@ import os
 import pickle
 import dash_bootstrap_components as dbc
 from flask import Flask, send_from_directory
-
+import glob
 import dash
 from scipy.io.wavfile import write
 from dash.dependencies import Input, Output, State
@@ -32,7 +32,6 @@ placeholder_plot.layout.font = {'color': 'white'}
 server = Flask(__name__)
 app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.DARKLY], prevent_initial_callbacks="initial_duplicate")
 
-# Audio serving
 @app.callback(
     Output('audio-player', 'src'),
     [Input('tsne-output', 'clickData')]
@@ -40,14 +39,26 @@ app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.DARKLY
 def play_sound(clickData):
     if clickData is None:
         return ''
-
-    path = clickData['points'][0]['text']
-
-    return '/audio/' + path
+    # Assuming the full path is provided and 'audio/' is part of the path
+    full_path = clickData['points'][0]['text']
+    # Extract the relative path from the full path
+    audio_base_path = 'audio/'  # Adjust this path to where your 'audio/' directory is located
+    relative_path = os.path.relpath(full_path, audio_base_path)
+    
+    return f'/audio/{relative_path}'
 
 @server.route('/audio/<path:path>')
 def serve_audio(path):
-    return send_from_directory('output', path)
+    return send_from_directory('audio', path)
+
+def is_audio_file(filename):
+    if filename.endswith('.wav'):
+        return True
+    if filename.endswith('.mp3'):
+        return True
+    if filename.endswith('.ogg'):
+        return True
+    return False
 
 # TSNE Code
 def get_features(y, sr):	
@@ -62,33 +73,44 @@ def get_features(y, sr):
                       ) / np.std(feature_vector)
     return feature_vector, y.mean()
 
-def tsne_plot(model_id, perplexity=30, learning_rate=200):
-    files = os.listdir('output')
-    matching_files = [f for f in files if f.startswith(f"{model_id.replace('/', '-')}")]
+def tsne_plot(perplexity=30, learning_rate=200, n_iter=1000):
+    files = glob.glob('audio/**/*', recursive=True)
+    files = [entry for entry in files if os.path.isfile(entry) if is_audio_file(entry)]
 
     feature_vectors = []
-    for f in tqdm(matching_files):
-        y, sr = librosa.load("output/"+f)
+    for f in tqdm(files):
+        y, sr = librosa.load(f)
         feat, avg_amp = get_features(y, sr)
         feature_vectors.append({"file": f, "features": feat, "avg_amp": avg_amp})
 
-    tsne = TSNE(n_components=3, learning_rate=200, perplexity=50,
-                verbose=1, angle=0.1, random_state=0)
+    tsne = TSNE(n_components=3, learning_rate=learning_rate, perplexity=perplexity,
+                n_iter=n_iter, verbose=1, angle=0.1, random_state=0)
     tsne = tsne.fit_transform(np.array([f["features"] for f in feature_vectors]))
     data = []
 
     for i, f in enumerate(feature_vectors):
         abspath = os.path.abspath(f['file'])
         file_name = os.path.basename(f['file'])
-        data.append([abspath, file_name, tsne[i,0], tsne[i,1], tsne[i,2], f['avg_amp']])
+        data.append([abspath, tsne[i,0], tsne[i,1], tsne[i,2], f['avg_amp']])
 
-    df = pd.DataFrame(data, columns =['path','file_name','x','y', 'z', 'avg_amp'])
+    df = pd.DataFrame(data, columns =['file_name','x','y', 'z', 'avg_amp'])
+
     df.to_csv('feature_vectors.csv', index=False)
 
     f = go.FigureWidget([go.Scatter3d(x=df.x, y=df.y, z=df.z, text=df.file_name, 
-                                customdata=[df.path, df.file_name], 
+                                customdata=[df.file_name], 
                                 mode='markers')])
     scatter = f.data
+    # Adjust margins
+    f.update_layout(
+        margin=dict(l=20, r=20, t=20, b=20),  # Adjust left, right, top, bottom margins as needed
+        hovermode='closest'
+    )
+
+    # Ensure responsiveness
+    f.update_layout(
+        autosize=True
+    )
     f.layout.hovermode = 'closest'
     f.update_traces(hovertemplate="%{text}<extra></extra>") 
     for s in scatter:
@@ -105,155 +127,26 @@ def tsne_plot(model_id, perplexity=30, learning_rate=200):
     
 @app.callback(
     Output('tsne-output', 'figure'),
-    Input('generate-tsne-button', 'n_clicks'),
-    State('model-dropdown', 'value'),
-    State('perplexity-slider', 'value'),
-    State('learning-rate-slider', 'value'),
+    [Input('generate-tsne-button', 'n_clicks')],
+    [State('perplexity-slider', 'value'),
+     State('learning-rate-slider', 'value'),
+     State('iterations-slider', 'value')],  # Add this line
     prevent_initial_call=True  # This prevents the callback from running at app startup
 )
-def generate_tsne(n_clicks, model_id, perplexity, learning_rate):
+def generate_tsne(n_clicks, perplexity, learning_rate, n_iter):  # Add n_iter parameter
     if n_clicks == 0:
         return dash.no_update
 
     # Your t-SNE plot generation logic here
-    plot = tsne_plot(model_id, perplexity, learning_rate)
+    plot = tsne_plot(perplexity, learning_rate, n_iter)  # Pass n_iter to tsne_plot
     return plot
-
-# Interpolation code
-@app.callback(
-    [Output('node1-output', 'children'), Output('node1-audio', 'src')],
-    [Input('set-node1-button', 'n_clicks')],
-    [State('tsne-output', 'clickData')]
-)
-def set_node1(n_clicks, clickData):
-    if n_clicks == 0 or clickData is None:
-        return ('', '')
-    # Retrieve the file path from the clicked point
-    path = clickData['points'][0]['text']
-    
-    return (path, '/audio/' + path)
-
-@app.callback(
-    [Output('node2-output', 'children'), Output('node2-audio', 'src')],
-    [Input('set-node2-button', 'n_clicks')],
-    [State('tsne-output', 'clickData')]
-)
-def set_node2(n_clicks, clickData):
-    if n_clicks == 0 or clickData is None:
-        return ('', '')
-    
-    path = clickData['points'][0]['text']
-
-    return (path, '/audio/' + path)
-
-@app.callback(
-    Output('audio-container', 'children', allow_duplicate=True),
-    [Input('interpolate-button', 'n_clicks')],
-    [State('model-dropdown', 'value'), 
-     State('node1-output', 'children'), 
-     State('node2-output', 'children'), 
-     State('steps-slider', 'value'),
-     State('audio-container', 'children')
-     ]
-)
-def interpolate(n_clicks, model_id, node1, node2, steps, audio_children):
-    if n_clicks == 0 or node1 == '' or node2 == '':
-        return []
-
-
-
-    pickle_file = f"{model_id.replace('/', '-')}.pkl"
-    pipe = None 
-
-    if os.path.exists(pickle_file):
-        print(f"Loading {model_id} from pickle file")
-        with open(pickle_file, 'rb') as f:
-            pipe = pickle.load(f)
-        print(f"Loaded {model_id} from pickle file")
-    else:
-        print(f"Downloading {model_id} from HuggingFace")
-        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
-        print(f"Saving {model_id} to pickle file")
-        with open(pickle_file, 'wb') as f:
-            pickle.dump(pipe, f)
-    
-    sr = pipe.unet.sample_rate
-
-    audio1 = librosa.load("output/" + node1, sr=sr)
-    audio2 = librosa.load("output/" + node2, sr=sr)
-
-    audios = [pipe.encode([audio1]), pipe.encode([audio2])]
-
-    interpolated_audios = pipe.slerp(audios[0], audios[1], steps=steps, alpha=0.5)
-
-    audio_elements = []
-    for i, audio in enumerate(interpolated_audios):
-        filename = f"interpolated_{model_id.replace('/', '-')}-{length_in_s}s-{steps}-{index}.wav"
-        write(filename, sr, audio) 
-        audio_elements.append(html.Audio(id=f'audio-player-{i}', controls=True, autoPlay=True, src=f"/audio/{filename}"))
-
-    return audio_elements
-
-@app.callback(
-    Output('audio-container', 'children'),
-    Input('generate-button', 'n_clicks'),
-    State('model-dropdown', 'value'),
-    State('steps-slider', 'value'),
-    State('length-slider', 'value'),
-    State('batch-size-slider', 'value'),
-    prevent_initial_call=True  # This prevents the callback from running at app startup
-)
-def generate(n_clicks, model_id, steps, length_in_s, batch_size):
-    if n_clicks is None or n_clicks == 0:
-        return dash.no_update
-
-    pickle_file = f"pipes/{model_id.replace('/', '-')}.pkl"
-    pipe = None
-
-    if os.path.exists(pickle_file):
-        with open(pickle_file, 'rb') as f:
-            pipe = pickle.load(f)
-    else:
-        pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
-        with open(pickle_file, 'wb') as f:
-            pickle.dump(pipe, f)
-
-    pipe = pipe.to(device)
-
-    try:
-        audios = pipe(audio_length_in_s=length_in_s, num_inference_steps=steps, batch_size=batch_size).audios
-    except AttributeError:
-        audios = pipe(num_inference_steps=steps, batch_size=batch_size).audios
-
-    files = os.listdir('output')
-    matching_files = [f for f in files if f.startswith(f"{model_id.replace('/', '-')}-{length_in_s}s-{steps}")]
-    max_index = len(matching_files)
-
-    audio_elements = []
-    for i, audio in enumerate(audios):
-        index = max_index + i
-        filename = f"{model_id.replace('/', '-')}-{length_in_s}s-{steps}-{index}.wav"
-        write(f"output/{filename}", pipe.unet.sample_rate, audio.transpose())
-        audio_elements.append(html.Audio(id=f'audio-player-{i}', controls=True, autoPlay=False, src=f"/audio/{filename}"))
-
-    return audio_elements
-
-# Model definitions
-models = [
-    "harmonai/glitch-440k",
-    "harmonai/jmann-small-190k",
-    "harmonai/jmann-large-580k",
-    "harmonai/maestro-150k",
-    "harmonai/unlocked-250k",
-    "harmonai/honk-140k"
-]
 
 perplexity_slider = dcc.Slider(
     id='perplexity-slider',
     min=5,
     max=50,
     step=5,
-    value=30,  # Default value
+    value=5,  # Default value
     marks={i: str(i) for i in range(5, 51, 5)},
     tooltip={"placement": "bottom", "always_visible": True}
 )
@@ -268,75 +161,38 @@ learning_rate_slider = dcc.Slider(
     tooltip={"placement": "bottom", "always_visible": True}
 )
 
+iterations_slider = dcc.Slider(
+    id='iterations-slider',
+    min=500,
+    max=5000,
+    step=500,
+    value=1000,  # Default value
+    marks={i: str(i) for i in range(500, 5001, 1000)},
+    tooltip={"placement": "bottom", "always_visible": True}
+)
+
 # App code
 app.layout = html.Div([
-    html.Div([
-        dcc.Dropdown(
-            id='model-dropdown',
-            options=[{'label': i, 'value': i} for i in models],
-            value="harmonai/glitch-440k"
-        ),
-        dcc.Slider(
-            id='batch-size-slider',
-            min=1,
-            max=8,
-            step=1,
-            value=1,
-        ),
-    ], style={'width': '50%', 'display': 'inline-block'}),
-
-    html.Div([
-        dcc.Slider(
-            id='steps-slider',
-            min=1,
-            max=500,
-            step=50,
-            value=200,
-        ),
-        dcc.Slider(
-            id='length-slider',
-            min=1,
-            max=30,
-            step=1,
-            value=2,
-        ),
-    ], style={'width': '50%', 'display': 'inline-block'}),
-
-    # New Div for Perplexity and Learning Rate Sliders
+    # New Div for Perplexity, Learning Rate, and Number of Iterations Sliders
     html.Div([
         html.Label('Perplexity:'),
         perplexity_slider,
         html.Label('Learning Rate:'),
-        learning_rate_slider
+        learning_rate_slider,
+        html.Label('Number of Iterations:'),
+        iterations_slider
     ], style={'position': 'absolute', 'left': '10px', 'bottom': '10px', 'width': '300px'}),
 
     # Existing layout components continue here...
     html.Div([
         html.Div([
             html.Audio(id='audio-player', controls=True, autoPlay=True, title='Clicked node audio'),            
-            html.Div([
-                dcc.Loading(
-                    id="loading-audio",
-                    type="default",
-                    children=html.Div(id='audio-container', children=[html.Audio(controls=True)], style={'display': 'flex', 'flex-direction': 'column'}, title="Generated audio")
-                )
-            ], style={'display': 'inline-block'}),
-
         ], style={'display': 'inline-block'}),
         html.Div([
             html.Div([
             html.Div([
-                html.Button('Generate Audio', id='generate-button', n_clicks=0),
                 html.Button('Generate t-SNE Plot', id='generate-tsne-button', n_clicks=0),            
             ]),
-            html.Div([
-                html.Button('Set Node 1', id='set-node1-button', n_clicks=0),
-                html.Button('Set Node 2', id='set-node2-button', n_clicks=0),
-                html.Button('Interpolate', id='interpolate-button', n_clicks=0),                
-            ]),
-            html.Audio(id='node1-audio', controls=True),
-            html.Audio(id='node2-audio', controls=True),
-
             ], style={'display': 'flex'}),
             html.Div([
                 dcc.Loading(
@@ -348,10 +204,6 @@ app.layout = html.Div([
         ], style={'width': '100%', 'height': '100%'}),  
                 
     ], style={'width': '100%', 'height': '100%', 'display': 'flex'}),
-    html.Div(id='node1-output', style={'display': 'none'}),
-    html.Div(id='node2-output', style={'display': 'none'}),
-    html.Div(id='model_sample_rate', style={'display': 'none'}),    
-
 ])
 
 if __name__ == '__main__':
