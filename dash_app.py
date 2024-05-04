@@ -184,7 +184,7 @@ perplexity_slider = dcc.Slider(
     min=5,
     max=50,
     step=5,
-    value=25,  # Default value
+    value=5,  # Default value
     marks={i: str(i) for i in range(5, 51, 5)},
     tooltip={"placement": "bottom", "always_visible": True}
 )
@@ -201,11 +201,11 @@ learning_rate_slider = dcc.Slider(
 
 iterations_slider = dcc.Slider(
     id='iterations-slider',
-    min=500,
+    min=1000,
     max=5000,
     step=500,
     value=1000,  # Default value
-    marks={i: str(i) for i in range(500, 5001, 1000)},
+    marks={i: str(i) for i in range(1000, 5001, 1000)},
     tooltip={"placement": "bottom", "always_visible": True}
 )
 
