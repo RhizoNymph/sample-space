@@ -19,7 +19,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 import numpy as np
-from sklearn.manifold import TSNE
+
 
 # Init code
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -101,29 +101,28 @@ def get_features(y, sr):
     return feature_vector, np.mean(y)
 
 
+from MulticoreTSNE import MulticoreTSNE as TSNE
+
 def tsne_plot(perplexity=30, learning_rate=200, n_iter=1000, n_clusters=5):
     files = glob.glob('audio/**/*', recursive=True)
     files = [entry for entry in files if os.path.isfile(entry) and is_audio_file(entry)]
 
     feature_vectors = []
-    for f in tqdm(files):
+    for f in files:
         y, sr = librosa.load(f)
         feat, avg_amp = get_features(y, sr)
         feature_vectors.append(feat)
 
-    # Convert list of feature vectors to a NumPy array
     feature_vectors = np.array(feature_vectors)
 
     # Perform K-means clustering
     kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(feature_vectors)
     labels = kmeans.labels_
 
-    # Perform t-SNE
     tsne = TSNE(n_components=3, learning_rate=learning_rate, perplexity=perplexity,
-                n_iter=n_iter, verbose=1, angle=0.1, random_state=0)
+                n_iter=n_iter, verbose=0, angle=0.1, random_state=0, n_jobs=-1)  # n_jobs=-1 uses all available cores
     tsne_results = tsne.fit_transform(feature_vectors)
 
-    # Prepare data for plotting
     data = []
     for i, f in enumerate(files):
         abspath = os.path.abspath(f)
@@ -132,15 +131,14 @@ def tsne_plot(perplexity=30, learning_rate=200, n_iter=1000, n_clusters=5):
 
     df = pd.DataFrame(data, columns=['file_name', 'x', 'y', 'z', 'cluster'])
 
-    # Plotting
     f = go.FigureWidget([go.Scatter3d(
         x=df.x, y=df.y, z=df.z,
         text=df.file_name,
         mode='markers',
         marker=dict(
             size=5,
-            color=df.cluster,  # Use cluster labels for color
-            colorscale='Viridis',  # This is a visually pleasing color scale
+            color=df.cluster,
+            colorscale='Viridis',
             colorbar=dict(title='Cluster')
         )
     )])

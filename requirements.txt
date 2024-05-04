@@ -22,6 +22,7 @@ fsspec==2024.2.0
 huggingface-hub==0.20.3
 idna==3.6
 importlib-metadata==7.0.1
+intel-openmp==2024.1.0
 ipython==8.21.0
 ipywidgets==8.1.2
 itsdangerous==2.1.2
@@ -36,6 +37,7 @@ MarkupSafe==2.1.5
 matplotlib-inline==0.1.6
 mpmath==1.3.0
 msgpack==1.0.7
+MulticoreTSNE @ file:///home/nymph/OpenSource/sample-space/Multicore-TSNE
 nest-asyncio==1.6.0
 networkx==3.2.1
 numba==0.59.0
@@ -80,6 +82,7 @@ soundfile==0.12.1
 soxr==0.3.7
 stack-data==0.6.3
 sympy==1.12
+tbb==2021.12.0
 tenacity==8.2.3
 threadpoolctl==3.2.0
 torch==2.2.0
