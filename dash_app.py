@@ -11,6 +11,7 @@ from dash import dcc
 from dash import html
 from diffusers import DiffusionPipeline
 import torch
+from sklearn.cluster import KMeans
 from scipy.io.wavfile import write
 import librosa
 from tqdm import tqdm
@@ -60,68 +61,96 @@ def is_audio_file(filename):
         return True
     return False
 
-# TSNE Code
-def get_features(y, sr):	
+def get_features(y, sr):
+    # Harmonic and Percussive components
+    y_harmonic, y_percussive = librosa.effects.hpss(y)
+    
+    # Mel-scaled power spectrogram
     S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
     log_S = librosa.amplitude_to_db(S, ref=np.max)
+    
+    # Chroma feature
+    chroma = librosa.feature.chroma_cqt(y=y_harmonic, sr=sr)
+    
+    # MFCC
     mfcc = librosa.feature.mfcc(S=log_S, n_mfcc=13)
-    delta_mfcc = librosa.feature.delta(mfcc, mode='nearest')
-    delta2_mfcc = librosa.feature.delta(mfcc, order=2, mode='nearest')
-    feature_vector = np.concatenate(
-        (np.mean(mfcc, 1), np.mean(delta_mfcc, 1), np.mean(delta2_mfcc, 1)))
-    feature_vector = (feature_vector-np.mean(feature_vector)
-                      ) / np.std(feature_vector)
-    return feature_vector, y.mean()
+    delta_mfcc = librosa.feature.delta(mfcc)
+    delta2_mfcc = librosa.feature.delta(mfcc, order=2)
+    
+    # Spectral Contrast
+    contrast = librosa.feature.spectral_contrast(S=S, sr=sr)
+    
+    # Temporal features
+    zero_crossing_rate = librosa.feature.zero_crossing_rate(y)[0]
+    
+    # Tempo and Beat Tracking
+    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+    beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+    
+    # Concatenate all features
+    feature_vector = np.concatenate([
+        np.mean(mfcc, axis=1), np.mean(delta_mfcc, axis=1), np.mean(delta2_mfcc, axis=1),
+        np.mean(chroma, axis=1), np.mean(contrast, axis=1),
+        [np.mean(zero_crossing_rate), tempo, len(beat_times)]  # Include number of beats
+    ])
+    
+    # Normalize features
+    feature_vector = (feature_vector - np.mean(feature_vector)) / np.std(feature_vector)
+    
+    return feature_vector, np.mean(y)
 
-def tsne_plot(perplexity=30, learning_rate=200, n_iter=1000):
+
+def tsne_plot(perplexity=30, learning_rate=200, n_iter=1000, n_clusters=5):
     files = glob.glob('audio/**/*', recursive=True)
-    files = [entry for entry in files if os.path.isfile(entry) if is_audio_file(entry)]
+    files = [entry for entry in files if os.path.isfile(entry) and is_audio_file(entry)]
 
     feature_vectors = []
     for f in tqdm(files):
         y, sr = librosa.load(f)
         feat, avg_amp = get_features(y, sr)
-        feature_vectors.append({"file": f, "features": feat, "avg_amp": avg_amp})
+        feature_vectors.append(feat)
 
+    # Convert list of feature vectors to a NumPy array
+    feature_vectors = np.array(feature_vectors)
+
+    # Perform K-means clustering
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(feature_vectors)
+    labels = kmeans.labels_
+
+    # Perform t-SNE
     tsne = TSNE(n_components=3, learning_rate=learning_rate, perplexity=perplexity,
                 n_iter=n_iter, verbose=1, angle=0.1, random_state=0)
-    tsne = tsne.fit_transform(np.array([f["features"] for f in feature_vectors]))
+    tsne_results = tsne.fit_transform(feature_vectors)
+
+    # Prepare data for plotting
     data = []
+    for i, f in enumerate(files):
+        abspath = os.path.abspath(f)
+        file_name = os.path.basename(f)
+        data.append([abspath, tsne_results[i, 0], tsne_results[i, 1], tsne_results[i, 2], labels[i]])
 
-    for i, f in enumerate(feature_vectors):
-        abspath = os.path.abspath(f['file'])
-        file_name = os.path.basename(f['file'])
-        data.append([abspath, tsne[i,0], tsne[i,1], tsne[i,2], f['avg_amp']])
+    df = pd.DataFrame(data, columns=['file_name', 'x', 'y', 'z', 'cluster'])
 
-    df = pd.DataFrame(data, columns =['file_name','x','y', 'z', 'avg_amp'])
+    # Plotting
+    f = go.FigureWidget([go.Scatter3d(
+        x=df.x, y=df.y, z=df.z,
+        text=df.file_name,
+        mode='markers',
+        marker=dict(
+            size=5,
+            color=df.cluster,  # Use cluster labels for color
+            colorscale='Viridis',  # This is a visually pleasing color scale
+            colorbar=dict(title='Cluster')
+        )
+    )])
 
-    df.to_csv('feature_vectors.csv', index=False)
-
-    f = go.FigureWidget([go.Scatter3d(x=df.x, y=df.y, z=df.z, text=df.file_name, 
-                                customdata=[df.file_name], 
-                                mode='markers')])
-    scatter = f.data
-    # Adjust margins
     f.update_layout(
-        margin=dict(l=20, r=20, t=20, b=20),  # Adjust left, right, top, bottom margins as needed
-        hovermode='closest'
+        margin=dict(l=20, r=20, t=20, b=20),
+        hovermode='closest',
+        plot_bgcolor='black',
+        paper_bgcolor='black',
+        font={'color': 'white'}
     )
-
-    # Ensure responsiveness
-    f.update_layout(
-        autosize=True
-    )
-    f.layout.hovermode = 'closest'
-    f.update_traces(hovertemplate="%{text}<extra></extra>") 
-    for s in scatter:
-        s.on_click(lambda trace, points, selector: play_sound(df.iloc[points.point_inds].file_name.item()))
-       
-        s.marker.colorscale = 'agsunset'
-        s.marker.color = df.avg_amp
-
-    f.layout.plot_bgcolor = 'black'
-    f.layout.paper_bgcolor = 'black'
-    f.layout.font = {'color': 'white'}
 
     return f
     
@@ -146,7 +175,7 @@ perplexity_slider = dcc.Slider(
     min=5,
     max=50,
     step=5,
-    value=5,  # Default value
+    value=25,  # Default value
     marks={i: str(i) for i in range(5, 51, 5)},
     tooltip={"placement": "bottom", "always_visible": True}
 )
@@ -156,8 +185,8 @@ learning_rate_slider = dcc.Slider(
     min=10,
     max=1000,
     step=10,
-    value=200,  # Default value
-    marks={i: str(i) for i in range(10, 1001, 100)},
+    value=500,  # Default value
+    marks={i: str(i) for i in range(100, 1001, 100)},
     tooltip={"placement": "bottom", "always_visible": True}
 )
 
