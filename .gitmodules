@@ -1,0 +1,3 @@
+[submodule "Multicore-TSNE"]
+	path = Multicore-TSNE
+	url = https://github.com/DmitryUlyanov/Multicore-TSNE
