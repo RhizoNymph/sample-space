@@ -23,6 +23,7 @@ from sklearn.manifold import TSNE
 
 # Init code
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
 generator = torch.Generator(device=device)
 
 placeholder_plot = go.Figure()
@@ -192,10 +193,10 @@ perplexity_slider = dcc.Slider(
 
 learning_rate_slider = dcc.Slider(
     id='learning-rate-slider',
-    min=10,
+    min=100,
     max=1000,
-    step=10,
-    value=500,  # Default value
+    step=100,
+    value=100,  # Default value
     marks={i: str(i) for i in range(100, 1001, 100)},
     tooltip={"placement": "bottom", "always_visible": True}
 )
