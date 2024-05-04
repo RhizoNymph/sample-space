@@ -1,14 +1,5 @@
 # sample-space
-A simple Dash app for using Diffusers to generate audio with a t-sne scatterplot of generations
+A t-sne map based sample/loop browser.
 
-![Sample Space](SampleSpace.png)
-
-Just do:
-
-
-
-. venv/bin/activate
-
-pip install -r requirements.txt
-
-python3 dash_app.py
+To run and install, use 'make all'.
+After that you can just type 'make' to run
