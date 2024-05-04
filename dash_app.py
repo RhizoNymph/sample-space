@@ -159,16 +159,26 @@ def tsne_plot(perplexity=30, learning_rate=200, n_iter=1000, n_clusters=5):
     [Input('generate-tsne-button', 'n_clicks')],
     [State('perplexity-slider', 'value'),
      State('learning-rate-slider', 'value'),
-     State('iterations-slider', 'value')],  # Add this line
-    prevent_initial_call=True  # This prevents the callback from running at app startup
+     State('iterations-slider', 'value'),
+     State('clusters-slider', 'value')],  # Add this line
+    prevent_initial_call=True
 )
-def generate_tsne(n_clicks, perplexity, learning_rate, n_iter):  # Add n_iter parameter
+def generate_tsne(n_clicks, perplexity, learning_rate, n_iter, n_clusters):  # Add n_clusters parameter
     if n_clicks == 0:
         return dash.no_update
 
-    # Your t-SNE plot generation logic here
-    plot = tsne_plot(perplexity, learning_rate, n_iter)  # Pass n_iter to tsne_plot
+    plot = tsne_plot(perplexity, learning_rate, n_iter, n_clusters)  # Pass n_clusters to tsne_plot
     return plot
+
+clusters_slider = dcc.Slider(
+    id='clusters-slider',
+    min=2,
+    max=10,
+    step=1,
+    value=5,  # Default value
+    marks={i: str(i) for i in range(2, 21)},
+    tooltip={"placement": "bottom", "always_visible": True}
+)
 
 perplexity_slider = dcc.Slider(
     id='perplexity-slider',
@@ -203,13 +213,16 @@ iterations_slider = dcc.Slider(
 # App code
 app.layout = html.Div([
     # New Div for Perplexity, Learning Rate, and Number of Iterations Sliders
+    
     html.Div([
         html.Label('Perplexity:'),
         perplexity_slider,
         html.Label('Learning Rate:'),
         learning_rate_slider,
         html.Label('Number of Iterations:'),
-        iterations_slider
+        iterations_slider,
+        html.Label('Number of Clusters:'),
+        clusters_slider 
     ], style={'position': 'absolute', 'left': '10px', 'bottom': '10px', 'width': '300px'}),
 
     # Existing layout components continue here...
