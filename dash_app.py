@@ -10,6 +10,7 @@ from dash.dependencies import Input, Output, State
 from dash import dcc
 from dash import html
 from diffusers import DiffusionPipeline
+from sklearn.preprocessing import StandardScaler
 import torch
 from sklearn.cluster import KMeans
 from scipy.io.wavfile import write
@@ -87,17 +88,25 @@ def get_features(y, sr):
     # Tempo and Beat Tracking
     tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+    rms_energy = librosa.feature.rms(y=y)[0]
+
+    spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)[0]
+    spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)[0]
+    spectral_flatness = librosa.feature.spectral_flatness(y=y)[0]
+    poly_features = librosa.feature.poly_features(y=y, sr=sr)[0]
     
     # Concatenate all features
     feature_vector = np.concatenate([
         np.mean(mfcc, axis=1), np.mean(delta_mfcc, axis=1), np.mean(delta2_mfcc, axis=1),
         np.mean(chroma, axis=1), np.mean(contrast, axis=1),
-        [np.mean(zero_crossing_rate), tempo, len(beat_times)]  # Include number of beats
+        [np.mean(zero_crossing_rate), tempo, len(beat_times), np.mean(rms_energy), np.mean(spectral_rolloff),
+         np.mean(spectral_bandwidth), np.mean(spectral_flatness), np.mean(poly_features)]
     ])
     
-    # Normalize features
-    feature_vector = (feature_vector - np.mean(feature_vector)) / np.std(feature_vector)
     
+    scaler = StandardScaler()
+    feature_vector = scaler.fit_transform(feature_vector.reshape(-1, 1)).flatten()
+
     return feature_vector, np.mean(y)
 
 
