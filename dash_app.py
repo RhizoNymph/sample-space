@@ -25,7 +25,10 @@ import numpy as np
 # Init code
 device = "cuda" if torch.cuda.is_available() else "cpu"
 AUDIO_DIR = os.getenv('AUDIO_DIR', './audio')
-
+upload_dir = os.path.join(AUDIO_DIR, 'uploaded')
+if not os.path.exists(upload_dir):
+    os.makedirs(upload_dir)
+    
 generator = torch.Generator(device=device)
 
 placeholder_plot = go.Figure()
@@ -37,15 +40,16 @@ server = Flask(__name__)
 app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.DARKLY], prevent_initial_callbacks="initial_duplicate")
 
 @app.callback(
-    Output('audio-player', 'src'),
+    [Output('audio-player', 'src'),
+    Output('path-to-copy', 'children')],
     [Input('tsne-output', 'clickData')]
 )
 def play_sound(clickData):
     if clickData is None:
-        return ''
+        return '', ''
     full_path = clickData['points'][0]['text']
     relative_path = os.path.relpath(full_path, AUDIO_DIR)
-    return f'/audio/{relative_path}'
+    return f'/audio/{relative_path}', relative_path
 
 @server.route('/audio/<path:path>')
 def serve_audio(path):
@@ -228,13 +232,17 @@ app.layout = html.Div([
         html.Label('Number of Iterations:'),
         iterations_slider,
         html.Label('Number of Clusters:'),
-        clusters_slider 
+        clusters_slider,
     ], style={'position': 'absolute', 'left': '10px', 'bottom': '10px', 'width': '300px'}),
 
     # Existing layout components continue here...
     html.Div([
         html.Div([
-            html.Audio(id='audio-player', controls=True, autoPlay=True, title='Clicked node audio'),            
+            html.Audio(id='audio-player', controls=True, autoPlay=True, title='Clicked node audio'),                          
+            html.Div([
+                html.Div(id='path-to-copy', style={'display': 'inline-block', 'flex-grow': 1}),
+                dcc.Clipboard(target_id='path-to-copy', style={'display': 'inline-block'}),
+            ], style={'display': 'flex', 'width': '100%', 'justify-content': 'space-between'}),
         ], style={'display': 'inline-block'}),
         html.Div([
             html.Div([
@@ -252,7 +260,7 @@ app.layout = html.Div([
                 )
             ], style={'width': '100%', 'height': '100%'}),
         ], style={'width': '100%', 'height': '100%'}),  
-                
+  # Clipboard component targeting the hidden Div
     ], style={'width': '100%', 'height': '100%', 'display': 'flex'}),
 ])
 
