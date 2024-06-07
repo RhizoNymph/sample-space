@@ -1,3 +1,6 @@
 [submodule "Multicore-TSNE"]
 	path = Multicore-TSNE
 	url = https://github.com/DmitryUlyanov/Multicore-TSNE
+[submodule "stable-audio-tools"]
+	path = stable-audio-tools
+	url = https://github.com/Stability-AI/stable-audio-tools

@@ -9,7 +9,6 @@ from scipy.io.wavfile import write
 from dash.dependencies import Input, Output, State
 from dash import dcc
 from dash import html
-from diffusers import DiffusionPipeline
 from sklearn.preprocessing import StandardScaler
 import torch
 from sklearn.cluster import KMeans
@@ -220,49 +219,109 @@ iterations_slider = dcc.Slider(
     tooltip={"placement": "bottom", "always_visible": True}
 )
 
-# App code
-app.layout = html.Div([
-    # New Div for Perplexity, Learning Rate, and Number of Iterations Sliders
-    
-    html.Div([
-        html.Label('Perplexity:'),
-        perplexity_slider,
-        html.Label('Learning Rate:'),
-        learning_rate_slider,
-        html.Label('Number of Iterations:'),
-        iterations_slider,
-        html.Label('Number of Clusters:'),
-        clusters_slider,
-    ], style={'position': 'absolute', 'left': '10px', 'bottom': '10px', 'width': '300px'}),
+steps_slider = dcc.Slider(
+    id='steps-slider',
+    min=0,
+    max=500,
+    step=10,
+    value=100,  # Default value
+    marks={i: str(i) for i in range(0, 501, 100)},
+    tooltip={"placement": "bottom", "always_visible": True}
+)
 
-    # Existing layout components continue here...
+seconds_start_slider = dcc.Slider(
+    id='seconds-start-slider',
+    min=0,
+    max=45,
+    step=1,
+    value=0,  # Default value
+    marks={i: str(i) for i in range(0, 46, 5)},
+    tooltip={"placement": "bottom", "always_visible": True}
+)
+
+seconds_total_slider = dcc.Slider(
+    id='seconds-total-slider',
+    min=0,
+    max=45,
+    step=1,
+    value=45,  # Default value
+    marks={i: str(i) for i in range(0, 46, 5)},
+    tooltip={"placement": "bottom", "always_visible": True}
+)
+
+cfg_slider = dcc.Slider(
+    id='cfg-slider',
+    min=0,
+    max=25,
+    step=1,
+    value=0,  # Default value
+    marks={i: str(i) for i in range(0, 26, 1)},
+    tooltip={"placement": "bottom", "always_visible": True}
+)
+
+positive_prompt_textarea = dcc.Textarea(
+    id='positive-prompt-textarea',
+    placeholder='Enter a positive prompt...'
+    
+)
+
+negative_prompt_textarea = dcc.Textarea(
+    id='negative-prompt-textarea',
+    placeholder='Enter a negative prompt...'
+    
+)
+
+# Adjustments to the app layout for toolbar, sidebar, and audio player
+
+# Update the app.layout section
+app.layout = html.Div([
     html.Div([
         html.Div([
-            html.Audio(id='audio-player', controls=True, autoPlay=True, title='Clicked node audio'),                          
-            html.Div([
-                html.Div(id='path-to-copy', style={'display': 'inline-block', 'flex-grow': 1}),
-                dcc.Clipboard(target_id='path-to-copy', style={'display': 'inline-block'}),
-            ], style={'display': 'flex', 'width': '100%', 'justify-content': 'space-between'}),
-        ], style={'display': 'inline-block'}),
+            html.Label('Positive Prompt:'),
+            positive_prompt_textarea,
+            html.Label('Negative Prompt:'),
+            negative_prompt_textarea,
+            html.Button('Generate Audio', id='generate-audio-button', n_clicks=0),
+            html.Label('Steps:'),
+            steps_slider,
+            html.Label('Seconds Start:'),
+            seconds_start_slider,
+            html.Label('Seconds Total:'),
+            seconds_total_slider,
+            html.Label('CFG:'),
+            cfg_slider,
+            html.Label('Audio Directory:'),
+            dcc.Input(id='audio-dir-input', type='text', value='./audio', style={'margin': '10px'}),
+            html.Button('Generate t-SNE Plot', id='generate-tsne-button', n_clicks=0),
+        ], style={'display': 'flex', 'flex-direction': 'column', 'margin': '10px'}),
         html.Div([
-            html.Div([
-            html.Div([
-                html.Label('Audio Directory:'),
-                dcc.Input(id='audio-dir-input', type='text', value='./audio', style={'margin': '10px'}),
-                html.Button('Generate t-SNE Plot', id='generate-tsne-button', n_clicks=0),            
-            ]),
-            ], style={'display': 'flex'}),
-            html.Div([
-                dcc.Loading(
-                    id="loading-tsne",
-                    type="default",
-                    children=dcc.Graph(id='tsne-output', config={'displayModeBar': False, 'autosizable': True, 'fillFrame': True}, style={'width': '100%', 'height': '100%'}, figure=placeholder_plot)
-                )
-            ], style={'width': '100%', 'height': '100%'}),
-        ], style={'width': '100%', 'height': '100%'}),  
-  # Clipboard component targeting the hidden Div
-    ], style={'width': '100%', 'height': '100%', 'display': 'flex'}),
-])
+            html.Label('Perplexity:'),
+            perplexity_slider,
+            html.Label('Learning Rate:'),
+            learning_rate_slider,
+            html.Label('Number of Iterations:'),
+            iterations_slider,
+            html.Label('Number of Clusters:'),
+            clusters_slider,
+        ], style={'display': 'flex', 'flex-direction': 'column', 'margin': '10px'}),
+    ], style={'position': 'absolute', 'left': '10px', 'top': '60px', 'width': '300px', 'padding': '20px'}),
+
+    html.Div([
+        html.Audio(id='audio-player', controls=True, autoPlay=True, title='Clicked node audio'),
+        html.Div([
+            html.Div(id='path-to-copy', style={'display': 'inline-block', 'flex-grow': 1}),
+            dcc.Clipboard(target_id='path-to-copy', style={'display': 'inline-block'}),
+        ], style={'display': 'flex', 'width': '100%', 'justify-content': 'space-between'}),
+    ], style={'position': 'absolute', 'top': '10px', 'left': '10px', 'width': '100%', 'padding': '10px'}),
+
+    html.Div([
+        dcc.Loading(
+            id="loading-tsne",
+            type="default",
+            children=dcc.Graph(id='tsne-output', config={'displayModeBar': False, 'autosizable': True, 'fillFrame': True}, style={'width': 'calc(100% - 320px)', 'height': '100%'}, figure=placeholder_plot)
+        )
+    ], style={'position': 'absolute', 'left': '320px', 'top': '10px', 'right': '10px', 'bottom': '10px'}),
+], style={'width': '100%', 'height': '100%', 'display': 'flex', 'position': 'relative'})
 
 if __name__ == '__main__':
-    app.run_server(debug=True, host='0.0.0.0')
+    app.run_server(debug=True, host='0.0.0.0', port=8051)
